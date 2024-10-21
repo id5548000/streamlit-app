@@ -74,11 +74,11 @@ def process_image(image_data, image_file):
     st.write("Analyzing...")
 
     # Perform text reading
-    extracted_text = GetTextRead(image_file, image_data)
+    extracted_text = GetTextRead(image_file, image_data, image)
     if extracted_text:
         sentiment_analysis(extracted_text)
 
-def GetTextRead(image_file, image_data):
+def GetTextRead(image_file, image_data, original_image):
     try:
         result = cv_client.analyze(
             image_data=image_data,
@@ -87,11 +87,26 @@ def GetTextRead(image_file, image_data):
 
         if result.read is not None:
             extracted_text = ""
+            draw = ImageDraw.Draw(original_image)
+            color = 'cyan'
+
             for block in result.read.blocks:
                 for line in block.lines:
                     extracted_text += f"{line.text} "
+                    # Draw bounding box
+                    if line.bounding_polygon:
+                        r = line.bounding_polygon
+                        bounding_polygon = [(r[i].x, r[i].y) for i in range(len(r))]
+                        draw.polygon(bounding_polygon, outline=color, width=3)
+
+                        # Overlay the text on the image
+                        draw.text((bounding_polygon[0][0], bounding_polygon[0][1]), line.text, fill=color)
+
             st.write("Text found in the image:")
             st.write(extracted_text.strip())
+
+            # Display the image with overlays
+            st.image(original_image, caption="Processed Image with Text", use_column_width=True)
             return extracted_text.strip()
         else:
             st.write("No text found in the image.")
