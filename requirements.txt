@@ -1,0 +1,6 @@
+streamlit
+pillow
+matplotlib
+azure-ai-vision
+azure-core
+python-dotenv
