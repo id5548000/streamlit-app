@@ -3,20 +3,23 @@ from dotenv import load_dotenv
 import os
 from PIL import Image, ImageDraw
 from matplotlib import pyplot as plt
+
+# Import namespaces
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
 
 
 def main():
-    # Load configuration settings from the .env file
+    global cv_client
+
+    # Get Configuration Settings
     load_dotenv()
     ai_endpoint = os.getenv('AI_SERVICE_ENDPOINT')
     ai_key = os.getenv('AI_SERVICE_KEY')
 
     if not ai_endpoint or not ai_key:
-        st.error("AI service endpoint or key is not set in the .env file")
-        return
+        raise ValueError("AI service endpoint or key is not set in the .env file")
 
     # Authenticate Azure AI Vision client
     cv_client = ImageAnalysisClient(
@@ -31,19 +34,35 @@ def main():
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
     if uploaded_file is not None:
+        # Debug: Show the file name and type
+        st.write(f"Uploaded file name: {uploaded_file.name}")
+        st.write(f"Uploaded file type: {uploaded_file.type}")
+
+        # Read the uploaded image data
+        image_data = uploaded_file.read()  # Read the file data directly
+
+        # Debug: Check the size of the image data
+        image_data_size = len(image_data)
+        st.write(f"Image size: {image_data_size} bytes")  # Display the size of the image data
+
+        # Check for empty or oversized images
+        if image_data_size == 0:
+            st.error("Uploaded image is empty. Please upload a valid image.")
+            return
+        elif image_data_size > 20971520:  # 20 MB in bytes
+            st.error("Uploaded image is too large. Please upload an image smaller than 20 MB.")
+            return
+
         # Display the uploaded image
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", use_column_width=True)
         st.write("Analyzing...")
 
         # Perform text reading
-        GetTextRead(cv_client, uploaded_file)
+        GetTextRead(uploaded_file, image_data)
 
 
-def GetTextRead(cv_client, image_file):
-    # Open image file
-    image_data = image_file.read()
-
+def GetTextRead(image_file, image_data):
     # Use Analyze image function to read text in image
     try:
         result = cv_client.analyze(
@@ -51,10 +70,12 @@ def GetTextRead(cv_client, image_file):
             visual_features=[VisualFeatures.READ]
         )
 
-        # Display the image and overlay it with the extracted text
+        # Debug: Check the result
+        st.write("Analysis result received.")
         if result.read is not None:
             st.write("Text found in the image:")
 
+            # Display the image and overlay it with the extracted text
             image = Image.open(image_file)
             fig = plt.figure(figsize=(image.width / 100, image.height / 100))
             plt.axis('off')
