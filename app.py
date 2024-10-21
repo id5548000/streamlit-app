@@ -4,55 +4,63 @@ import os
 from PIL import Image, ImageDraw
 from matplotlib import pyplot as plt
 
-# Import namespaces
+# Import namespaces for Azure Vision and Text Analytics
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
+from azure.ai.textanalytics import TextAnalyticsClient
 
+# Initialize the Azure clients globally
+cv_client = None
+text_client = None
 
 def main():
-    global cv_client
+    global cv_client, text_client
 
-    # Get Configuration Settings
+    # Load environment variables
     load_dotenv()
     ai_endpoint = os.getenv('AI_SERVICE_ENDPOINT')
     ai_key = os.getenv('AI_SERVICE_KEY')
+    text_endpoint = os.getenv('TEXT_ANALYTICS_ENDPOINT')
+    text_key = os.getenv('TEXT_ANALYTICS_KEY')
 
-    if not ai_endpoint or not ai_key:
-        raise ValueError("AI service endpoint or key is not set in the .env file")
+    # Validate endpoints and keys
+    if not ai_endpoint or not ai_key or not text_endpoint or not text_key:
+        raise ValueError("One or more service endpoints or keys are not set in the .env file")
 
-    # Authenticate Azure AI Vision client
+    # Authenticate Azure clients
     cv_client = ImageAnalysisClient(
         endpoint=ai_endpoint,
         credential=AzureKeyCredential(ai_key)
     )
 
-    st.title("Azure AI Vision Text Reader")
-    st.write("Upload an image or take a picture using your camera.")
+    text_client = TextAnalyticsClient(
+        endpoint=text_endpoint,
+        credential=AzureKeyCredential(text_key)
+    )
+
+    st.title("Azure AI Vision Text Reader with Sentiment Analysis")
+    st.write("Upload an image or take a picture to analyze the text and get sentiment analysis.")
 
     # File upload component
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-    # Camera input for mobile devices
     camera_input = st.camera_input("Take a picture...")
 
-    # Check if the uploaded file is not None or camera input is provided
     if uploaded_file is not None:
-        image = uploaded_file.read()  # Read the file data directly
-        process_image(image, uploaded_file)  # Process the uploaded image
+        image_data = uploaded_file.read()
+        process_image(image_data, uploaded_file)
     elif camera_input is not None:
-        image = camera_input.read()  # Read the camera input data directly
-        process_image(image, camera_input)  # Process the camera input image
+        image_data = camera_input.read()
+        process_image(image_data, camera_input)
     else:
         st.write("Please upload an image or take a picture.")
-
 
 def process_image(image_data, image_file):
     # Debug: Show the image size
     image_data_size = len(image_data)
     st.write(f"Image size: {image_data_size} bytes")
 
-    # Check for empty or oversized images
+    # Validate image size
     if image_data_size == 0:
         st.error("Uploaded image is empty. Please upload a valid image.")
         return
@@ -66,47 +74,43 @@ def process_image(image_data, image_file):
     st.write("Analyzing...")
 
     # Perform text reading
-    GetTextRead(image_file, image_data)
-
+    extracted_text = GetTextRead(image_file, image_data)
+    if extracted_text:
+        sentiment_analysis(extracted_text)
 
 def GetTextRead(image_file, image_data):
-    # Use Analyze image function to read text in image
     try:
         result = cv_client.analyze(
             image_data=image_data,
             visual_features=[VisualFeatures.READ]
         )
 
-        # Debug: Check the result
-        st.write("Analysis result received.")
         if result.read is not None:
-            st.write("Text found in the image:")
-
-            # Display the image and overlay it with the extracted text
-            image = Image.open(image_file)
-            fig = plt.figure(figsize=(image.width / 100, image.height / 100))
-            plt.axis('off')
-            draw = ImageDraw.Draw(image)
-            color = 'cyan'
-
+            extracted_text = ""
             for block in result.read.blocks:
                 for line in block.lines:
-                    st.write(f"- {line.text}")
-
-                    # Draw the bounding polygon for each line
-                    if line.bounding_polygon:
-                        r = line.bounding_polygon
-                        bounding_polygon = [(r[i].x, r[i].y) for i in range(len(r))]
-                        draw.polygon(bounding_polygon, outline=color, width=3)
-
-            # Display the processed image with highlighted text
-            st.image(image, caption="Processed Image with Text", use_column_width=True)
+                    extracted_text += f"{line.text} "
+            st.write("Text found in the image:")
+            st.write(extracted_text.strip())
+            return extracted_text.strip()
         else:
             st.write("No text found in the image.")
+            return None
 
     except Exception as e:
         st.error(f"Error during text reading: {e}")
+        return None
 
+def sentiment_analysis(text):
+    try:
+        response = text_client.analyze_sentiment([text])[0]
+        st.write("Sentiment Analysis Result:")
+        st.write(f"Document sentiment: {response.sentiment}")
+        for sentence in response.sentences:
+            st.write(f"- Sentence: {sentence.text}")
+            st.write(f"  Sentiment: {sentence.sentiment}, Confidence scores: {sentence.confidence_scores}")
+    except Exception as e:
+        st.error(f"Error during sentiment analysis: {e}")
 
 if __name__ == "__main__":
     main()
