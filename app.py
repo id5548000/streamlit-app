@@ -28,38 +28,45 @@ def main():
     )
 
     st.title("Azure AI Vision Text Reader")
-    st.write("Upload an image to analyze the text using Azure AI Vision.")
+    st.write("Upload an image or take a picture using your camera.")
 
     # File upload component
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
+    # Camera input for mobile devices
+    camera_input = st.camera_input("Take a picture...")
+
+    # Check if the uploaded file is not None or camera input is provided
     if uploaded_file is not None:
-        # Debug: Show the file name and type
-        st.write(f"Uploaded file name: {uploaded_file.name}")
-        st.write(f"Uploaded file type: {uploaded_file.type}")
+        image = uploaded_file.read()  # Read the file data directly
+        process_image(image, uploaded_file)  # Process the uploaded image
+    elif camera_input is not None:
+        image = camera_input.read()  # Read the camera input data directly
+        process_image(image, camera_input)  # Process the camera input image
+    else:
+        st.write("Please upload an image or take a picture.")
 
-        # Read the uploaded image data
-        image_data = uploaded_file.read()  # Read the file data directly
 
-        # Debug: Check the size of the image data
-        image_data_size = len(image_data)
-        st.write(f"Image size: {image_data_size} bytes")  # Display the size of the image data
+def process_image(image_data, image_file):
+    # Debug: Show the image size
+    image_data_size = len(image_data)
+    st.write(f"Image size: {image_data_size} bytes")
 
-        # Check for empty or oversized images
-        if image_data_size == 0:
-            st.error("Uploaded image is empty. Please upload a valid image.")
-            return
-        elif image_data_size > 20971520:  # 20 MB in bytes
-            st.error("Uploaded image is too large. Please upload an image smaller than 20 MB.")
-            return
+    # Check for empty or oversized images
+    if image_data_size == 0:
+        st.error("Uploaded image is empty. Please upload a valid image.")
+        return
+    elif image_data_size > 20971520:  # 20 MB in bytes
+        st.error("Uploaded image is too large. Please upload an image smaller than 20 MB.")
+        return
 
-        # Display the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-        st.write("Analyzing...")
+    # Display the uploaded image
+    image = Image.open(image_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.write("Analyzing...")
 
-        # Perform text reading
-        GetTextRead(uploaded_file, image_data)
+    # Perform text reading
+    GetTextRead(image_file, image_data)
 
 
 def GetTextRead(image_file, image_data):
