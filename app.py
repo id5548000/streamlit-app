@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 from PIL import Image, ImageDraw
 from matplotlib import pyplot as plt
+import requests  # For calling the Video Indexer REST API
 
 # Import namespaces for Azure Vision and Text Analytics
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
@@ -13,9 +14,12 @@ from azure.ai.textanalytics import TextAnalyticsClient
 # Initialize the Azure clients globally
 cv_client = None
 text_client = None
+video_indexer_key = None
+video_indexer_endpoint = None
+video_indexer_location = None
 
 def main():
-    global cv_client, text_client
+    global cv_client, text_client, video_indexer_key, video_indexer_endpoint, video_indexer_location
 
     # Load environment variables
     load_dotenv()
@@ -23,9 +27,12 @@ def main():
     ai_key = os.getenv('AI_SERVICE_KEY')
     text_endpoint = os.getenv('TEXT_ANALYTICS_ENDPOINT')
     text_key = os.getenv('TEXT_ANALYTICS_KEY')
+    video_indexer_key = os.getenv('VIDEO_INDEXER_API_KEY')
+    video_indexer_endpoint = os.getenv('VIDEO_INDEXER_ENDPOINT')
+    video_indexer_location = os.getenv('VIDEO_INDEXER_LOCATION')
 
     # Validate endpoints and keys
-    if not ai_endpoint or not ai_key or not text_endpoint or not text_key:
+    if not ai_endpoint or not ai_key or not text_endpoint or not text_key or not video_indexer_key or not video_indexer_endpoint:
         raise ValueError("One or more service endpoints or keys are not set in the .env file")
 
     # Authenticate Azure clients
@@ -39,21 +46,25 @@ def main():
         credential=AzureKeyCredential(text_key)
     )
 
-    st.title("Azure AI Vision Text Reader with Sentiment Analysis")
-    st.write("Upload an image or take a picture to analyze the text and get sentiment analysis.")
+    st.title("Azure AI Vision and Video Indexer with Sentiment Analysis")
+    st.write("Upload an image or video to analyze text and extract insights.")
 
     # File upload component
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("Choose an image or video...", type=["jpg", "jpeg", "png", "mp4"])
     camera_input = st.camera_input("Take a picture...")
 
     if uploaded_file is not None:
-        image_data = uploaded_file.read()
-        process_image(image_data, uploaded_file)
+        if uploaded_file.type in ["image/jpeg", "image/png", "image/jpg"]:
+            image_data = uploaded_file.read()
+            process_image(image_data, uploaded_file)
+        elif uploaded_file.type == "video/mp4":
+            video_data = uploaded_file.read()
+            process_video(video_data)
     elif camera_input is not None:
         image_data = camera_input.read()
         process_image(image_data, camera_input)
     else:
-        st.write("Please upload an image or take a picture.")
+        st.write("Please upload an image or video, or take a picture.")
 
 def process_image(image_data, image_file):
     # Debug: Show the image size
@@ -77,6 +88,54 @@ def process_image(image_data, image_file):
     extracted_text = GetTextRead(image_file, image_data, image)
     if extracted_text:
         sentiment_analysis(extracted_text)
+
+def process_video(video_data):
+    st.write("Processing video...")
+    video_url = upload_video_to_video_indexer(video_data)
+    if video_url:
+        video_insights = get_video_insights(video_url)
+        st.write("Video analysis complete!")
+        st.write(video_insights)
+
+def upload_video_to_video_indexer(video_data):
+    try:
+        # Upload the video to Azure Video Indexer
+        url = f"https://{video_indexer_location}.api.videoindexer.ai/{video_indexer_location}/Accounts/{video_indexer_key}/Videos"
+        headers = {
+            'Ocp-Apim-Subscription-Key': video_indexer_key,
+        }
+        files = {
+            'file': ('video.mp4', video_data, 'video/mp4'),
+        }
+
+        response = requests.post(url, headers=headers, files=files)
+        response.raise_for_status()
+
+        result = response.json()
+        video_id = result['id']
+        st.write(f"Video uploaded successfully: {video_id}")
+        return video_id
+
+    except Exception as e:
+        st.error(f"Error uploading video: {e}")
+        return None
+
+def get_video_insights(video_id):
+    try:
+        # Retrieve the video insights
+        url = f"https://{video_indexer_location}.api.videoindexer.ai/{video_indexer_location}/Accounts/{video_indexer_key}/Videos/{video_id}/Index"
+        headers = {
+            'Ocp-Apim-Subscription-Key': video_indexer_key,
+        }
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        insights = response.json()
+        return insights
+
+    except Exception as e:
+        st.error(f"Error retrieving video insights: {e}")
+        return None
 
 def GetTextRead(image_file, image_data, original_image):
     try:
